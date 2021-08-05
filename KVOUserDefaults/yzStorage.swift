@@ -24,7 +24,6 @@ extension Float: PropertyListValue {}
 extension Array: PropertyListValue where Element: PropertyListValue {}
 extension Dictionary: PropertyListValue where Key == String, Value: PropertyListValue {}
 
-
 struct Key: RawRepresentable {
     let rawValue: String
 }
@@ -59,33 +58,45 @@ class DefaultsObservation: NSObject {
         UserDefaults.standard.removeObserver(self, forKeyPath: key.rawValue, context: nil)
     }
 }
-
 @propertyWrapper
-struct UserDefault<T: PropertyListValue> {
-    var projectedValue: UserDefault<T> { return self }
+struct UserDefaultWrapper<T: PropertyListValue> {
     let key: Key
+    let defaultValue: T
+    let userDefaults: UserDefaults
+    var projectedValue: UserDefaultWrapper<T> { return self }
+    /// 构造函数
+    /// - Parameters:
+    ///   - key: 存储key值
+    ///   - defaultValue: 当存储值不存在时返回的默认值
+    init(_ key: Key, defaultValue: T, userDefaults: UserDefaults = UserDefaults.standard) {
+        self.key = key
+        self.defaultValue = defaultValue
+        self.userDefaults = userDefaults
+    }
 
-    var wrappedValue: T? {
-        get { UserDefaults.standard.value(forKey: key.rawValue) as? T }
-        set { UserDefaults.standard.set(newValue, forKey: key.rawValue) }
+    /// wrappedValue是@propertyWrapper必须需要实现的属性
+    /// 当操作我们要包裹的属性时，其具体的set、get方法实际上走的都是wrappedValue的get、set方法
+    public var wrappedValue: T {
+        get {
+            return userDefaults.object(forKey: key.rawValue) as? T ?? defaultValue
+        }
+        set {
+            userDefaults.setValue(newValue, forKey: key.rawValue)
+        }
     }
     
-    func observe(change: @escaping (T?, T?) -> Void) -> NSObject {
+    public func observe(change: @escaping (T?, T?) -> Void) -> NSObject {
         return DefaultsObservation(key: key) { old, new in
             change(old as? T, new as? T)
         }
     }
-
-    // The rest of the code is unchanged
 }
 
-
-extension Key {
+extension Key:PropertyListValue {
     static let isFirstLaunch: Key = "isFirstLaunch"
 }
-
 struct Storage {
-    @UserDefault(key: .isFirstLaunch)
+    @UserDefaultWrapper(Key.isFirstLaunch , defaultValue: false)
     var isFirstLaunch: Bool
 }
 
